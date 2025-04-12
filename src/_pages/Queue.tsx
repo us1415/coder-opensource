@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import QueueCommands from "../components/Queue/QueueCommands"
+import WebAudioRecorder from "../components/WebAudioRecorder"
 
 import { useToast } from "../contexts/toast"
 import { Screenshot } from "../types/screenshots"
@@ -135,7 +136,7 @@ const Queue: React.FC<QueueProps> = ({
   const handleOpenSettings = () => {
     window.electronAPI.openSettingsPortal();
   };
-  
+
   return (
     <div ref={contentRef} className={`bg-transparent w-1/2`}>
       <div className="px-4 py-3">
@@ -152,6 +153,28 @@ const Queue: React.FC<QueueProps> = ({
             credits={credits}
             currentLanguage={currentLanguage}
             setLanguage={setLanguage}
+          />
+
+          <WebAudioRecorder
+            onTranscriptionComplete={(text) => {
+              console.log("Transcription:", text);
+            }}
+            onSolutionGenerated={(solution) => {
+              console.log("Solution generated:", solution);
+              // Set the problem info and solution in the app state
+              window.electronAPI.setProblemInfo({
+                problem_statement: "Problem from audio transcription",
+                constraints: "",
+                example_input: "",
+                example_output: ""
+              });
+
+              // Navigate to the solutions view
+              window.electronAPI.setView("solutions");
+
+              // Send the solution to the renderer
+              window.electronAPI.sendEvent("SOLUTION_SUCCESS", solution);
+            }}
           />
         </div>
       </div>

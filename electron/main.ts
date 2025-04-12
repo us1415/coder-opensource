@@ -4,6 +4,7 @@ import fs from "fs"
 import { initializeIpcHandlers } from "./ipcHandlers"
 import { ProcessingHelper } from "./ProcessingHelper"
 import { ScreenshotHelper } from "./ScreenshotHelper"
+import { AudioHelper } from "./AudioHelper"
 import { ShortcutsHelper } from "./shortcuts"
 import { initAutoUpdater } from "./autoUpdater"
 import { configHelper } from "./ConfigHelper"
@@ -29,6 +30,7 @@ const state = {
   screenshotHelper: null as ScreenshotHelper | null,
   shortcutsHelper: null as ShortcutsHelper | null,
   processingHelper: null as ProcessingHelper | null,
+  audioHelper: null as AudioHelper | null,
 
   // View and state management
   view: "queue" as "queue" | "solutions" | "debug",
@@ -85,6 +87,7 @@ export interface IShortcutsHelperDeps {
   moveWindowRight: () => void
   moveWindowUp: () => void
   moveWindowDown: () => void
+  audioHelper: AudioHelper | null
 }
 
 export interface IIpcHandlerDeps {
@@ -107,11 +110,13 @@ export interface IIpcHandlerDeps {
   moveWindowRight: () => void
   moveWindowUp: () => void
   moveWindowDown: () => void
+  setProblemInfo: (problemInfo: any) => void
 }
 
 // Initialize helpers
 function initializeHelpers() {
   state.screenshotHelper = new ScreenshotHelper(state.view)
+  state.audioHelper = new AudioHelper()
   state.processingHelper = new ProcessingHelper({
     getScreenshotHelper,
     getMainWindow,
@@ -150,7 +155,8 @@ function initializeHelpers() {
         )
       ),
     moveWindowUp: () => moveWindowVertical((y) => y - state.step),
-    moveWindowDown: () => moveWindowVertical((y) => y + state.step)
+    moveWindowDown: () => moveWindowVertical((y) => y + state.step),
+    audioHelper: state.audioHelper
   } as IShortcutsHelperDeps)
 }
 
@@ -220,9 +226,12 @@ async function createWindow(): Promise<void> {
       preload: isDev
         ? path.join(__dirname, "../dist-electron/preload.js")
         : path.join(__dirname, "preload.js"),
-      scrollBounce: true
+      scrollBounce: true,
+      // Add performance optimizations
+      backgroundThrottling: false,
+      disableBlinkFeatures: 'Auxclick'
     },
-    show: true,
+    show: false, // Don't show until ready
     frame: false,
     transparent: true,
     fullscreenable: false,
@@ -239,6 +248,12 @@ async function createWindow(): Promise<void> {
   }
 
   state.mainWindow = new BrowserWindow(windowSettings)
+
+  // Set window options to reduce flickering
+  if (process.platform === 'win32') {
+    // On Windows, use a different approach to reduce flickering
+    state.mainWindow.setBackgroundColor('#00000000')
+  }
 
   // Add more detailed logging for window events
   state.mainWindow.webContents.on("did-finish-load", () => {
@@ -278,7 +293,7 @@ async function createWindow(): Promise<void> {
     // In production, load from the built files
     const indexPath = path.join(__dirname, "../dist/index.html")
     console.log("Loading production build:", indexPath)
-    
+
     if (fs.existsSync(indexPath)) {
       state.mainWindow.loadFile(indexPath)
     } else {
@@ -338,15 +353,13 @@ async function createWindow(): Promise<void> {
   state.currentX = bounds.x
   state.currentY = bounds.y
   state.isWindowVisible = true
-  
+
   // Set opacity based on user preferences or hide initially
   // Ensure the window is visible for the first launch or if opacity > 0.1
   const savedOpacity = configHelper.getOpacity();
   console.log(`Initial opacity from config: ${savedOpacity}`);
-  
-  // Always make sure window is shown first
-  state.mainWindow.showInactive(); // Use showInactive for consistency
-  
+
+  // Set opacity before showing the window to prevent flickering
   if (savedOpacity <= 0.1) {
     console.log('Initial opacity too low, setting to 0 and hiding window');
     state.mainWindow.setOpacity(0);
@@ -354,6 +367,8 @@ async function createWindow(): Promise<void> {
   } else {
     console.log(`Setting initial opacity to ${savedOpacity}`);
     state.mainWindow.setOpacity(savedOpacity);
+    // Use a single call to show the window with the correct opacity
+    state.mainWindow.showInactive();
     state.isWindowVisible = true;
   }
 }
@@ -382,43 +397,58 @@ function handleWindowClosed(): void {
 // Window visibility functions
 function hideMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
+    // Save the current window position and size
     const bounds = state.mainWindow.getBounds();
     state.windowPosition = { x: bounds.x, y: bounds.y };
     state.windowSize = { width: bounds.width, height: bounds.height };
-    state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
+
+    // Hide the window immediately to prevent flickering
     state.mainWindow.setOpacity(0);
+    state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     state.isWindowVisible = false;
-    console.log('Window hidden, opacity set to 0');
+    console.log('Window hidden');
   }
 }
 
 function showMainWindow(): void {
   if (!state.mainWindow?.isDestroyed()) {
+    // Set window properties before showing to prevent flickering
     if (state.windowPosition && state.windowSize) {
       state.mainWindow.setBounds({
         ...state.windowPosition,
         ...state.windowSize
       });
     }
+
+    // Configure window properties
     state.mainWindow.setIgnoreMouseEvents(false);
     state.mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
     state.mainWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true
     });
     state.mainWindow.setContentProtection(true);
-    state.mainWindow.setOpacity(0); // Set opacity to 0 before showing
-    state.mainWindow.showInactive(); // Use showInactive instead of show+focus
-    state.mainWindow.setOpacity(1); // Then set opacity to 1 after showing
+
+    // Get the saved opacity
+    const savedOpacity = configHelper.getOpacity();
+
+    // Set opacity before showing the window
+    state.mainWindow.setOpacity(savedOpacity);
+
+    // Show the window without animation
+    state.mainWindow.showInactive();
     state.isWindowVisible = true;
-    console.log('Window shown with showInactive(), opacity set to 1');
+    console.log('Window shown with opacity:', savedOpacity);
   }
 }
 
 function toggleMainWindow(): void {
   console.log(`Toggling window. Current state: ${state.isWindowVisible ? 'visible' : 'hidden'}`);
+
+  // Use a direct approach to toggle window visibility
   if (state.isWindowVisible) {
     hideMainWindow();
   } else {
+    // When showing the window, use a direct approach without animations
     showMainWindow();
   }
 }
@@ -502,26 +532,26 @@ async function initializeApp() {
     const sessionPath = path.join(appDataPath, 'session')
     const tempPath = path.join(appDataPath, 'temp')
     const cachePath = path.join(appDataPath, 'cache')
-    
+
     // Create directories if they don't exist
     for (const dir of [appDataPath, sessionPath, tempPath, cachePath]) {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
       }
     }
-    
+
     app.setPath('userData', appDataPath)
-    app.setPath('sessionData', sessionPath)      
+    app.setPath('sessionData', sessionPath)
     app.setPath('temp', tempPath)
     app.setPath('cache', cachePath)
-      
+
     loadEnvVariables()
-    
+
     // Ensure a configuration file exists
     if (!configHelper.hasApiKey()) {
       console.log("No API key found in configuration. User will need to set up.")
     }
-    
+
     initializeHelpers()
     initializeIpcHandlers({
       getMainWindow,
@@ -549,7 +579,8 @@ async function initializeApp() {
           )
         ),
       moveWindowUp: () => moveWindowVertical((y) => y - state.step),
-      moveWindowDown: () => moveWindowVertical((y) => y + state.step)
+      moveWindowDown: () => moveWindowVertical((y) => y + state.step),
+      setProblemInfo
     })
     await createWindow()
     state.shortcutsHelper?.registerGlobalShortcuts()
@@ -576,7 +607,7 @@ app.on("open-url", (event, url) => {
 // Handle second instance (removed auth callback handling)
 app.on("second-instance", (event, commandLine) => {
   console.log("second-instance event received:", commandLine)
-  
+
   // Focus or create the main window
   if (!state.mainWindow) {
     createWindow()
@@ -620,6 +651,10 @@ function setView(view: "queue" | "solutions" | "debug"): void {
 
 function getScreenshotHelper(): ScreenshotHelper | null {
   return state.screenshotHelper
+}
+
+function getAudioHelper(): AudioHelper | null {
+  return state.audioHelper
 }
 
 function getProblemInfo(): any {
@@ -691,6 +726,7 @@ export {
   getView,
   setView,
   getScreenshotHelper,
+  getAudioHelper,
   getProblemInfo,
   setProblemInfo,
   getScreenshotQueue,

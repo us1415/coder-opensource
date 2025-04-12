@@ -4,6 +4,7 @@ import { ipcMain, shell, dialog } from "electron"
 import { randomBytes } from "crypto"
 import { IIpcHandlerDeps } from "./main"
 import { configHelper } from "./ConfigHelper"
+import { getAudioHelper } from "./main"
 
 export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   console.log("Initializing IPC handlers")
@@ -20,16 +21,16 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("check-api-key", () => {
     return configHelper.hasApiKey();
   })
-  
+
   ipcMain.handle("validate-api-key", async (_event, apiKey) => {
     // First check the format
     if (!configHelper.isValidApiKeyFormat(apiKey)) {
-      return { 
-        valid: false, 
-        error: "Invalid API key format. OpenAI API keys start with 'sk-'" 
+      return {
+        valid: false,
+        error: "Invalid API key format. OpenAI API keys start with 'sk-'"
       };
     }
-    
+
     // Then test the API key with OpenAI
     const result = await configHelper.testApiKey(apiKey);
     return result;
@@ -99,7 +100,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       }
       return;
     }
-    
+
     await deps.processingHelper?.processScreenshots()
   })
 
@@ -187,7 +188,7 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   ipcMain.handle("open-external-url", (event, url: string) => {
     shell.openExternal(url)
   })
-  
+
   // Open external URL handler
   ipcMain.handle("openLink", (event, url: string) => {
     try {
@@ -242,13 +243,226 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
         }
         return { success: false, error: "API key required" };
       }
-      
+
       await deps.processingHelper?.processScreenshots()
       return { success: true }
     } catch (error) {
       console.error("Error processing screenshots:", error)
       return { error: "Failed to process screenshots" }
     }
+  })
+
+  // Audio recording handlers
+  ipcMain.handle("start-audio-recording", async () => {
+    try {
+      const audioHelper = getAudioHelper();
+      if (!audioHelper) {
+        return { success: false, error: "Audio helper not available" };
+      }
+
+      const result = await audioHelper.startRecording();
+      return result;
+    } catch (error) {
+      console.error("Error starting audio recording:", error);
+      return { success: false, error: error.message || "Failed to start recording" };
+    }
+  });
+
+  ipcMain.handle("get-recording-status", () => {
+    const audioHelper = getAudioHelper();
+    if (!audioHelper) {
+      return { recording: false, path: null };
+    }
+
+    return audioHelper.getRecordingStatus();
+  })
+
+  ipcMain.handle("stop-audio-recording", async () => {
+    try {
+      const audioHelper = getAudioHelper();
+      if (!audioHelper) {
+        return { success: false, error: "Audio helper not available" };
+      }
+
+      const result = await audioHelper.stopRecording();
+
+      // Notify the renderer about the recording being stopped
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow && result.success && result.path) {
+        mainWindow.webContents.send("audio-recording-stopped", { path: result.path });
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error stopping audio recording:", error);
+      return { success: false, error: error.message || "Failed to stop recording" };
+    }
+  });
+
+  ipcMain.handle("transcribe-audio", async (_event, audioPath) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow) {
+          mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
+        }
+        return { success: false, error: "API key required" };
+      }
+
+      const audioHelper = getAudioHelper();
+      if (!audioHelper) {
+        return { success: false, error: "Audio helper not available" };
+      }
+
+      // Notify the renderer that transcription is starting
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send("transcription-started");
+      }
+
+      const result = await audioHelper.transcribeAudio(audioPath);
+
+      // Notify the renderer about the transcription result
+      if (mainWindow) {
+        if (result.success && result.text) {
+          mainWindow.webContents.send("transcription-completed", { text: result.text });
+        } else {
+          mainWindow.webContents.send("transcription-error", { error: result.error || "Unknown error" });
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+
+      // Notify the renderer about the error
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send("transcription-error", { error: error.message || "Unknown error" });
+      }
+
+      return { success: false, error: error.message || "Failed to transcribe audio" };
+    }
+  });
+
+  ipcMain.handle("process-audio-transcription", async (_event, transcription) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow) {
+          mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
+        }
+        return { success: false, error: "API key required" };
+      }
+
+      // Process the transcription
+      const result = await deps.processingHelper?.processAudioTranscription(transcription);
+      return result || { success: false, error: "Processing helper not available" };
+    } catch (error) {
+      console.error("Error processing audio transcription:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to process audio transcription"
+      };
+    }
+  });
+
+  ipcMain.handle("transcribe-web-audio", async (_event, base64Audio) => {
+    try {
+      // Check for API key before processing
+      if (!configHelper.hasApiKey()) {
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow) {
+          mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
+        }
+        return { success: false, error: "API key required" };
+      }
+
+      const audioHelper = getAudioHelper();
+      if (!audioHelper) {
+        return { success: false, error: "Audio helper not available" };
+      }
+
+      // Notify the renderer that transcription is starting
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send("transcription-started");
+      }
+
+      console.log("Received base64 audio data, length:", base64Audio.length);
+
+      // Convert base64 to buffer
+      // Remove the data URL prefix (e.g., "data:audio/webm;base64,")
+      const base64Data = base64Audio.split(',')[1];
+      const audioBuffer = Buffer.from(base64Data, 'base64');
+
+      console.log("Converted to buffer, size:", audioBuffer.length, "bytes");
+
+      // Save the buffer to a temporary file
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      const { v4: uuidv4 } = require('uuid');
+
+      const tempDir = path.join(os.tmpdir(), 'voice-assistant');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const tempFilePath = path.join(tempDir, `web-audio-${uuidv4()}.webm`);
+      fs.writeFileSync(tempFilePath, audioBuffer);
+
+      console.log("Saved audio to temporary file:", tempFilePath);
+
+      // Transcribe the temporary file
+      const result = await audioHelper.transcribeAudio(tempFilePath);
+
+      // Clean up the temporary file
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log("Temporary file deleted:", tempFilePath);
+      } catch (cleanupError) {
+        console.error("Error deleting temporary file:", cleanupError);
+      }
+
+      // Notify the renderer about the transcription result
+      if (mainWindow) {
+        if (result.success && result.text) {
+          mainWindow.webContents.send("transcription-completed", { text: result.text });
+        } else {
+          mainWindow.webContents.send("transcription-error", { error: result.error || "Unknown error" });
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error transcribing web audio:", error);
+
+      // Notify the renderer about the error
+      const mainWindow = deps.getMainWindow();
+      if (mainWindow) {
+        mainWindow.webContents.send("transcription-error", { error: error.message || "Unknown error" });
+      }
+
+      return { success: false, error: error.message || "Failed to transcribe audio" };
+    }
+  });
+
+  // View management handlers
+  ipcMain.handle("get-view", () => {
+    return deps.getView()
+  })
+
+  ipcMain.handle("set-view", (_event, view) => {
+    deps.setView(view)
+    return { success: true }
+  })
+
+  ipcMain.handle("set-problem-info", (_event, problemInfo) => {
+    deps.setProblemInfo(problemInfo)
+    return { success: true }
   })
 
   // Reset handlers
@@ -318,30 +532,30 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
       return { error: "Failed to move window down" }
     }
   })
-  
+
   // Delete last screenshot handler
   ipcMain.handle("delete-last-screenshot", async () => {
     try {
-      const queue = deps.getView() === "queue" 
-        ? deps.getScreenshotQueue() 
+      const queue = deps.getView() === "queue"
+        ? deps.getScreenshotQueue()
         : deps.getExtraScreenshotQueue()
-      
+
       if (queue.length === 0) {
         return { success: false, error: "No screenshots to delete" }
       }
-      
+
       // Get the last screenshot in the queue
       const lastScreenshot = queue[queue.length - 1]
-      
+
       // Delete it
       const result = await deps.deleteScreenshot(lastScreenshot)
-      
+
       // Notify the renderer about the change
       const mainWindow = deps.getMainWindow()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send("screenshot-deleted", { path: lastScreenshot })
       }
-      
+
       return result
     } catch (error) {
       console.error("Error deleting last screenshot:", error)

@@ -52,7 +52,7 @@ export interface ElectronAPI {
   onOutOfCredits: (callback: () => void) => () => void
   openSettingsPortal: () => Promise<void>
   getPlatform: () => string
-  
+
   // New methods for OpenAI integration
   getConfig: () => Promise<{ apiKey: string; model: string }>
   updateConfig: (config: { apiKey?: string; model?: string }) => Promise<boolean>
@@ -61,6 +61,21 @@ export interface ElectronAPI {
   openLink: (url: string) => void
   onApiKeyInvalid: (callback: () => void) => () => void
   removeListener: (eventName: string, callback: (...args: any[]) => void) => void
+
+  // Audio recording and transcription methods
+  startAudioRecording: () => Promise<{ success: boolean; error?: string; path?: string }>
+  stopAudioRecording: () => Promise<{ success: boolean; error?: string; path?: string }>
+  transcribeAudio: (audioPath: string) => Promise<{ success: boolean; text?: string; error?: string }>
+  getRecordingStatus: () => Promise<{ recording: boolean; path: string | null }>
+
+  // Audio recording and transcription event listeners
+  onAudioRecordingStarted: (callback: () => void) => () => void
+  onAudioRecordingStopped: (callback: (data: { path: string }) => void) => () => void
+  onTranscriptionStarted: (callback: () => void) => () => void
+  onTranscriptionCompleted: (callback: (data: { text: string }) => void) => () => void
+  onTranscriptionError: (callback: (data: { error: string }) => void) => () => void
+  onAudioError: (callback: (data: { error: string }) => void) => () => void
+  onAudioNotification: (callback: (data: { message: string }) => void) => () => void
 }
 
 declare global {

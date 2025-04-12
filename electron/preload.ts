@@ -156,6 +156,9 @@ const electronAPI = {
   triggerMoveRight: () => ipcRenderer.invoke("trigger-move-right"),
   triggerMoveUp: () => ipcRenderer.invoke("trigger-move-up"),
   triggerMoveDown: () => ipcRenderer.invoke("trigger-move-down"),
+  setView: (view: "queue" | "solutions" | "debug") => ipcRenderer.invoke("set-view", view),
+  setProblemInfo: (problemInfo: any) => ipcRenderer.invoke("set-problem-info", problemInfo),
+  sendEvent: (event: string, data: any) => ipcRenderer.send(event, data),
   onSubscriptionUpdated: (callback: () => void) => {
     const subscription = () => callback()
     ipcRenderer.on("subscription-updated", subscription)
@@ -202,10 +205,10 @@ const electronAPI = {
     }
   },
   getPlatform: () => process.platform,
-  
+
   // New methods for OpenAI API integration
   getConfig: () => ipcRenderer.invoke("get-config"),
-  updateConfig: (config: { apiKey?: string; model?: string; language?: string; opacity?: number }) => 
+  updateConfig: (config: { apiKey?: string; model?: string; language?: string; opacity?: number }) =>
     ipcRenderer.invoke("update-config", config),
   onShowSettings: (callback: () => void) => {
     const subscription = () => callback()
@@ -215,9 +218,9 @@ const electronAPI = {
     }
   },
   checkApiKey: () => ipcRenderer.invoke("check-api-key"),
-  validateApiKey: (apiKey: string) => 
+  validateApiKey: (apiKey: string) =>
     ipcRenderer.invoke("validate-api-key", apiKey),
-  openExternal: (url: string) => 
+  openExternal: (url: string) =>
     ipcRenderer.invoke("openExternal", url),
   onApiKeyInvalid: (callback: () => void) => {
     const subscription = () => callback()
@@ -236,7 +239,66 @@ const electronAPI = {
       ipcRenderer.removeListener("delete-last-screenshot", subscription)
     }
   },
-  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot")
+  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot"),
+
+  // Audio recording and transcription methods
+  startAudioRecording: () => ipcRenderer.invoke("start-audio-recording"),
+  stopAudioRecording: () => ipcRenderer.invoke("stop-audio-recording"),
+  transcribeAudio: (audioPath: string) => ipcRenderer.invoke("transcribe-audio", audioPath),
+  transcribeWebAudio: (base64Audio: string) => ipcRenderer.invoke("transcribe-web-audio", base64Audio),
+  processAudioTranscription: (transcription: string) => ipcRenderer.invoke("process-audio-transcription", transcription),
+  getRecordingStatus: () => ipcRenderer.invoke("get-recording-status"),
+
+  // Audio recording and transcription event listeners
+  onAudioRecordingStarted: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("audio-recording-started", subscription)
+    return () => {
+      ipcRenderer.removeListener("audio-recording-started", subscription)
+    }
+  },
+  onAudioRecordingStopped: (callback: (data: { path: string }) => void) => {
+    const subscription = (_: any, data: { path: string }) => callback(data)
+    ipcRenderer.on("audio-recording-stopped", subscription)
+    return () => {
+      ipcRenderer.removeListener("audio-recording-stopped", subscription)
+    }
+  },
+  onTranscriptionStarted: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("transcription-started", subscription)
+    return () => {
+      ipcRenderer.removeListener("transcription-started", subscription)
+    }
+  },
+  onTranscriptionCompleted: (callback: (data: { text: string }) => void) => {
+    const subscription = (_: any, data: { text: string }) => callback(data)
+    ipcRenderer.on("transcription-completed", subscription)
+    return () => {
+      ipcRenderer.removeListener("transcription-completed", subscription)
+    }
+  },
+  onTranscriptionError: (callback: (data: { error: string }) => void) => {
+    const subscription = (_: any, data: { error: string }) => callback(data)
+    ipcRenderer.on("transcription-error", subscription)
+    return () => {
+      ipcRenderer.removeListener("transcription-error", subscription)
+    }
+  },
+  onAudioError: (callback: (data: { error: string }) => void) => {
+    const subscription = (_: any, data: { error: string }) => callback(data)
+    ipcRenderer.on("audio-error", subscription)
+    return () => {
+      ipcRenderer.removeListener("audio-error", subscription)
+    }
+  },
+  onAudioNotification: (callback: (data: { message: string }) => void) => {
+    const subscription = (_: any, data: { message: string }) => callback(data)
+    ipcRenderer.on("audio-notification", subscription)
+    return () => {
+      ipcRenderer.removeListener("audio-notification", subscription)
+    }
+  }
 }
 
 // Before exposing the API
