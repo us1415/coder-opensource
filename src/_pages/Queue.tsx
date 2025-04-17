@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import QueueCommands from "../components/Queue/QueueCommands"
-import WebAudioRecorder from "../components/WebAudioRecorder"
+// WebAudioRecorder is now integrated into the command bars
 
 import { useToast } from "../contexts/toast"
 import { Screenshot } from "../types/screenshots"
@@ -155,27 +155,7 @@ const Queue: React.FC<QueueProps> = ({
             setLanguage={setLanguage}
           />
 
-          <WebAudioRecorder
-            onTranscriptionComplete={(text) => {
-              console.log("Transcription:", text);
-            }}
-            onSolutionGenerated={(solution) => {
-              console.log("Solution generated:", solution);
-              // Set the problem info and solution in the app state
-              window.electronAPI.setProblemInfo({
-                problem_statement: "Problem from audio transcription",
-                constraints: "",
-                example_input: "",
-                example_output: ""
-              });
-
-              // Navigate to the solutions view
-              window.electronAPI.setView("solutions");
-
-              // Send the solution to the renderer
-              window.electronAPI.sendEvent("SOLUTION_SUCCESS", solution);
-            }}
-          />
+          {/* Voice input is now integrated into the command bar */}
         </div>
       </div>
     </div>

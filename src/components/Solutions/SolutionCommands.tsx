@@ -4,6 +4,7 @@ import { Screenshot } from "../../types/screenshots"
 import { supabase } from "../../lib/supabase"
 import { LanguageSelector } from "../shared/LanguageSelector"
 import { COMMAND_KEY } from "../../utils/platform"
+import VoiceInputButton from "../VoiceInput/VoiceInputButton"
 
 export interface SolutionCommandsProps {
   onTooltipVisibilityChange: (visible: boolean, height: number) => void
@@ -122,6 +123,9 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Voice Input */}
+              <VoiceInputButton />
 
               {extraScreenshots.length > 0 && (
                 <div

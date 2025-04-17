@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react"
 import { useToast } from "../../contexts/toast"
 import { LanguageSelector } from "../shared/LanguageSelector"
 import { COMMAND_KEY } from "../../utils/platform"
+import VoiceInputButton from "../VoiceInput/VoiceInputButton"
 
 interface QueueCommandsProps {
   onTooltipVisibilityChange: (visible: boolean, height: number) => void
@@ -36,14 +37,14 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
       // Clear any local storage or electron-specific data
       localStorage.clear();
       sessionStorage.clear();
-      
+
       // Clear the API key in the configuration
       await window.electronAPI.updateConfig({
         apiKey: '',
       });
-      
+
       showToast('Success', 'Logged out successfully', 'success');
-      
+
       // Reload the app after a short delay
       setTimeout(() => {
         window.location.reload();
@@ -104,6 +105,9 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Voice Input */}
+          <VoiceInputButton />
 
           {/* Solve Command */}
           {screenshotCount > 0 && (
@@ -324,7 +328,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                             : "Take a screenshot first to generate a solution."}
                         </p>
                       </div>
-                      
+
                       {/* Delete Last Screenshot Command */}
                       <div
                         className={`cursor-pointer rounded px-2 py-1.5 hover:bg-white/10 transition-colors ${
@@ -334,7 +338,7 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
                         }`}
                         onClick={async () => {
                           if (screenshotCount === 0) return
-                          
+
                           try {
                             const result = await window.electronAPI.deleteLastScreenshot()
                             if (!result.success) {

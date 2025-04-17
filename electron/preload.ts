@@ -257,6 +257,13 @@ const electronAPI = {
       ipcRenderer.removeListener("audio-recording-started", subscription)
     }
   },
+  onToggleVoiceRecording: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("toggle-voice-recording", subscription)
+    return () => {
+      ipcRenderer.removeListener("toggle-voice-recording", subscription)
+    }
+  },
   onAudioRecordingStopped: (callback: (data: { path: string }) => void) => {
     const subscription = (_: any, data: { path: string }) => callback(data)
     ipcRenderer.on("audio-recording-stopped", subscription)
